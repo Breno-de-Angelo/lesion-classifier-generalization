@@ -1,0 +1,19 @@
+version = 1
+revision = 2
+requires-python = ">=3.12"
+
+[[package]]
+name = "lesion-classification-generalization"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "raug" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "raug", git = "https://github.com/paaatcha/raug.git" }]
+
+[[package]]
+name = "raug"
+version = "0.1"
+source = { git = "https://github.com/paaatcha/raug.git#f4ce8664b9a735e31b7882f0c3a168ace6e5ca81" }

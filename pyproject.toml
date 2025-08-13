@@ -1,0 +1,12 @@
+[project]
+name = "lesion-classification-generalization"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "raug",
+]
+
+[tool.uv.sources]
+raug = { git = "https://github.com/paaatcha/raug.git" }
