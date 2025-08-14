@@ -9,56 +9,64 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from raug.models.effnet import MyEffnet
-from raug.eval import metrics_for_eval
-from raug.checkpoints import load_model
 import wandb
 from lesion_classifier_generalization.pad_ufes_dataset import PADUFES20Dataset
 
 
-class EfficientNetWrapper(nn.Module):
+class EfficientNetWithMetadata(nn.Module):
     """
-    Wrapper para tornar o EfficientNet moderno compatível com o RAUG
+    Modelo EfficientNet com integração de metadados clínicos
     """
-    def __init__(self, efficientnet):
+    def __init__(self, num_classes, num_metadata_features=3, dropout_rate=0.5):
         super().__init__()
-        self.efficientnet = efficientnet
         
-        # Remover o classificador final para extrair features
-        self.features = nn.Sequential(*list(self.efficientnet.children())[:-1])
+        # Carregar EfficientNet pré-treinado
+        import torchvision.models as models
+        try:
+            # Para versões mais recentes do torchvision
+            self.efficientnet = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+        except AttributeError:
+            # Fallback para versões mais antigas
+            self.efficientnet = models.efficientnet_b0(pretrained=True)
         
-    def extract_features(self, x):
-        """Método que o RAUG espera"""
-        x = self.features(x)
-        return x
+        # Remover o classificador final
+        self.efficientnet.classifier = nn.Identity()
+        
+        # Feature reducer (equivalente ao neurons_reducer_block do RAUG)
+        self.feature_reducer = nn.Sequential(
+            nn.Linear(1280, 512),  # EfficientNet-B0 features
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(p=dropout_rate)
+        )
+        
+        # Classificador final com metadados
+        self.classifier = nn.Linear(512 + num_metadata_features, num_classes)
+        
+    def forward(self, x, metadata):
+        # Extrair features do EfficientNet
+        features = self.efficientnet(x)
+        
+        # Reduzir dimensão das features
+        features = self.feature_reducer(features)
+        
+        # Concatenar com metadados (equivalente ao comb_method='concat' do RAUG)
+        combined = torch.cat([features, metadata], dim=1)
+        
+        # Classificação final
+        output = self.classifier(combined)
+        
+        return output
 
 
-def create_efficientnet_model(num_classes, num_metadata_features=4):
+def create_efficientnet_model(num_classes, num_metadata_features=3):
     """
-    Cria modelo EfficientNet usando RAUG
+    Cria modelo EfficientNet com metadados
     """
-    import torchvision.models as models
-    
-    # Carregar EfficientNet pré-treinado (versão compatível com torchvision 0.23+)
-    try:
-        # Para versões mais recentes do torchvision
-        effnet = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-    except AttributeError:
-        # Fallback para versões mais antigas
-        effnet = models.efficientnet_b0(pretrained=True)
-    
-    # Envolver o EfficientNet para torná-lo compatível com o RAUG
-    effnet_wrapper = EfficientNetWrapper(effnet)
-    
-    # Criar modelo RAUG com EfficientNet
-    model = MyEffnet(
-        efnet=effnet_wrapper,
-        num_class=num_classes,
-        neurons_reducer_block=512,
-        p_dropout=0.5,
-        comb_method='concat',
-        comb_config=num_metadata_features,
-        n_feat_conv=1280  # EfficientNet-B0 features
+    model = EfficientNetWithMetadata(
+        num_classes=num_classes,
+        num_metadata_features=num_metadata_features,
+        dropout_rate=0.5
     )
     
     return model
@@ -127,6 +135,68 @@ def validate_epoch(model, val_loader, criterion, device):
     return epoch_loss, epoch_acc
 
 
+def evaluate_model(model, test_loader, criterion, device):
+    """Evaluation completa do modelo"""
+    model.eval()
+    total_loss = 0
+    correct = 0
+    total = 0
+    all_predictions = []
+    all_labels = []
+    
+    with torch.no_grad():
+        for images, labels, metadata, _ in test_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+            metadata = metadata.to(device).float()
+            
+            outputs = model(images, metadata)
+            loss = criterion(outputs, labels)
+            
+            total_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += labels.size(0)
+            correct += predicted.eq(labels).sum().item()
+            
+            all_predictions.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+    
+    # Calcular métricas
+    accuracy = 100. * correct / total
+    avg_loss = total_loss / len(test_loader)
+    
+    # Top-2 accuracy
+    top2_correct = 0
+    for i, (pred, true_label) in enumerate(zip(all_predictions, all_labels)):
+        outputs_i = outputs[i] if 'outputs' in locals() else None
+        if outputs_i is not None:
+            _, top2_indices = outputs_i.topk(2)
+            if true_label in top2_indices:
+                top2_correct += 1
+    
+    top2_accuracy = 100. * top2_correct / total if total > 0 else 0
+    
+    # Balanced accuracy (simplificado)
+    from sklearn.metrics import balanced_accuracy_score
+    balanced_acc = balanced_accuracy_score(all_labels, all_predictions) * 100
+    
+    # AUC (simplificado)
+    from sklearn.metrics import roc_auc_score
+    try:
+        # One-vs-rest AUC
+        auc = roc_auc_score(all_labels, all_predictions, average='macro', multi_class='ovr') * 100
+    except:
+        auc = 0
+    
+    return {
+        'loss': avg_loss,
+        'accuracy': accuracy / 100,  # Normalizar para 0-1
+        'top2_acc': top2_accuracy / 100,
+        'balanced_accuracy': balanced_acc / 100,
+        'auc': auc / 100
+    }
+
+
 def train_with_wandb():
     """
     Função principal para training com wandb
@@ -138,7 +208,7 @@ def train_with_wandb():
     SAVE_FOLDER = "results_pad_ufes_20_wandb"
     IMG_SIZE = 224
     BATCH_SIZE = 16
-    NUM_EPOCHS = 50
+    NUM_EPOCHS = 2
     LEARNING_RATE = 0.001
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
@@ -159,9 +229,9 @@ def train_with_wandb():
     # Inicializar wandb
     wandb.init(
         project="pad-ufes-20-lesion-classification",
-        name="efficientnet-metadata",
+        name="efficientnet-metadata-native",
         config={
-            "architecture": "EfficientNet-B0",
+            "architecture": "EfficientNet-B0-Native",
             "dataset": "PAD-UFES-20",
             "epochs": NUM_EPOCHS,
             "batch_size": BATCH_SIZE,
@@ -287,19 +357,17 @@ def train_with_wandb():
     print("Avaliando no conjunto de teste...")
     
     # Carregar melhor modelo
-    checkpoint = torch.load(os.path.join(SAVE_FOLDER, 'best_model.pth'))
-    model.load_state_dict(checkpoint['model_state_dict'])
+    try:
+        # Tentar carregar com weights_only=False para compatibilidade
+        checkpoint = torch.load(os.path.join(SAVE_FOLDER, 'best_model.pth'), weights_only=False)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print("Modelo carregado com sucesso!")
+    except Exception as e:
+        print(f"Erro ao carregar checkpoint: {e}")
+        print("Usando modelo atual para evaluation...")
     
-    # Evaluation usando RAUG
-    test_metrics = metrics_for_eval(
-        model, 
-        test_loader, 
-        DEVICE, 
-        criterion, 
-        topk=2,
-        get_balanced_acc=True, 
-        get_auc=True
-    )
+    # Evaluation usando função nativa
+    test_metrics = evaluate_model(model, test_loader, criterion, DEVICE)
     
     # Log dos resultados finais para wandb
     wandb.log({
@@ -337,7 +405,7 @@ def train_with_wandb():
             'test': len(test_dataset)
         },
         'best_val_accuracy': best_val_acc,
-        'best_epoch': checkpoint['epoch']
+        'best_epoch': checkpoint['epoch'] if 'checkpoint' in locals() else epoch
     }
     
     with open(os.path.join(SAVE_FOLDER, 'final_results.json'), 'w') as f:

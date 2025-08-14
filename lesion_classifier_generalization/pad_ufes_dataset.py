@@ -3,10 +3,11 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 import torchvision.transforms as transforms
 from sklearn.model_selection import train_test_split
-from raug.loader import MyDataset
+from torch.utils.data import Dataset
+from PIL import Image
 
 
-class PADUFES20Dataset:
+class PADUFES20Dataset(Dataset):
     """
     Classe para carregar e preparar o dataset PAD-UFES-20
     """
@@ -38,6 +39,36 @@ class PADUFES20Dataset:
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
+        
+        # Obter caminhos das imagens e labels
+        self.image_paths, self.labels = self.get_image_paths()
+        self.metadata = self.get_metadata_features()
+        
+        # Filtrar dados válidos
+        valid_indices = [i for i, path in enumerate(self.image_paths) if path is not None]
+        self.image_paths = [self.image_paths[i] for i in valid_indices]
+        self.labels = [self.labels[i] for i in valid_indices]
+        self.metadata = self.metadata[valid_indices]
+    
+    def __len__(self):
+        return len(self.image_paths)
+    
+    def __getitem__(self, idx):
+        # Carregar imagem
+        img_path = self.image_paths[idx]
+        image = Image.open(img_path).convert('RGB')
+        
+        # Aplicar transformação (sempre val_transform para compatibilidade)
+        if hasattr(self, 'is_training') and self.is_training:
+            image = self.train_transform(image)
+        else:
+            image = self.val_transform(image)
+        
+        # Obter label e metadata
+        label = self.labels[idx]
+        metadata = self.metadata[idx]
+        
+        return image, label, metadata, idx
     
     def get_image_paths(self):
         """Retorna caminhos das imagens e labels"""
@@ -90,6 +121,12 @@ class PADUFES20Dataset:
         image_paths, labels = self.get_image_paths()
         metadata = self.get_metadata_features()
         
+        # Filtrar dados válidos
+        valid_indices = [i for i, path in enumerate(image_paths) if path is not None]
+        image_paths = [image_paths[i] for i in valid_indices]
+        labels = [labels[i] for i in valid_indices]
+        metadata = metadata[valid_indices]
+        
         # Primeira divisão: train+val vs test
         X_temp, X_test, y_temp, y_test, meta_temp, meta_test = train_test_split(
             image_paths, labels, metadata, test_size=test_size, 
@@ -110,25 +147,25 @@ class PADUFES20Dataset:
     
     def get_datasets(self, split_data):
         """Cria datasets PyTorch"""
-        train_dataset = MyDataset(
-            imgs_path=split_data['train'][0],
-            labels=split_data['train'][1],
-            meta_data=split_data['train'][2],
-            transform=self.train_transform
-        )
+        # Dataset de treinamento
+        train_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
+        train_dataset.image_paths = split_data['train'][0]
+        train_dataset.labels = split_data['train'][1]
+        train_dataset.metadata = split_data['train'][2]
+        train_dataset.is_training = True
         
-        val_dataset = MyDataset(
-            imgs_path=split_data['val'][0],
-            labels=split_data['val'][1],
-            meta_data=split_data['val'][2],
-            transform=self.val_transform
-        )
+        # Dataset de validação
+        val_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
+        val_dataset.image_paths = split_data['val'][0]
+        val_dataset.labels = split_data['val'][1]
+        val_dataset.metadata = split_data['val'][2]
+        val_dataset.is_training = False
         
-        test_dataset = MyDataset(
-            imgs_path=split_data['test'][0],
-            labels=split_data['test'][1],
-            meta_data=split_data['test'][2],
-            transform=self.val_transform
-        )
+        # Dataset de teste
+        test_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
+        test_dataset.image_paths = split_data['test'][0]
+        test_dataset.labels = split_data['test'][1]
+        test_dataset.metadata = split_data['test'][2]
+        test_dataset.is_training = False
         
         return train_dataset, val_dataset, test_dataset
