@@ -146,13 +146,17 @@ O PAD-UFES-20 está disponível no Mendeley Data e requer registro para download
 2. Clique em "Download All" (requer login/registro)
 3. Baixe o arquivo ZIP completo
 
-### 5.2. Extração dos dados
+### 5.2. Download e extração dos dados
 
 ```bash
 cd data/pad_ufes_20
 
-# Extrair o arquivo baixado (substitua pelo nome real do arquivo)
-unzip PAD-UFES-20.zip
+# Baixar o dataset
+curl -C - -L -O --retry 10 --retry-delay 2 --retry-max-time 0 \
+  https://prod-dcd-datasets-cache-zipfiles.s3.eu-west-1.amazonaws.com/zr7vgbcyr2-1.zip
+
+# Extrair o arquivo baixado
+unzip zr7vgbcyr2-1.zip
 
 # Verificar a estrutura dos diretórios
 ls -la
