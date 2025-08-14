@@ -1,1 +1,6 @@
 data/
+raug/
+results*/
+wandb/
+
+*.pyc
