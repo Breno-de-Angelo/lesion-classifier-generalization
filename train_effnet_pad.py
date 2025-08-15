@@ -136,13 +136,13 @@ def validate_epoch(model, val_loader, criterion, device):
 
 
 def evaluate_model(model, test_loader, criterion, device):
-    """Evaluation completa do modelo"""
     model.eval()
     total_loss = 0
     correct = 0
     total = 0
     all_predictions = []
     all_labels = []
+    all_outputs = []
     
     with torch.no_grad():
         for images, labels, metadata, _ in test_loader:
@@ -160,6 +160,7 @@ def evaluate_model(model, test_loader, criterion, device):
             
             all_predictions.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+            all_outputs.extend(outputs.cpu().numpy())
     
     # Calcular métricas
     accuracy = 100. * correct / total
@@ -168,10 +169,12 @@ def evaluate_model(model, test_loader, criterion, device):
     # Top-2 accuracy
     top2_correct = 0
     for i, (pred, true_label) in enumerate(zip(all_predictions, all_labels)):
-        outputs_i = outputs[i] if 'outputs' in locals() else None
+        outputs_i = all_outputs[i]
         if outputs_i is not None:
-            _, top2_indices = outputs_i.topk(2)
-            if true_label in top2_indices:
+            # Converter para tensor para usar topk
+            outputs_tensor = torch.tensor(outputs_i).unsqueeze(0)
+            _, top2_indices = outputs_tensor.topk(2)
+            if true_label in top2_indices[0]:
                 top2_correct += 1
     
     top2_accuracy = 100. * top2_correct / total if total > 0 else 0
