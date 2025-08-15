@@ -24,16 +24,22 @@ class EfficientNet(nn.Module):
         # Carregar EfficientNet pré-treinado
         try:
             # Para versões mais recentes do torchvision
-            self.efficientnet = models.efficientnet_b7(weights=models.EfficientNet_B7_Weights.IMAGENET1K_V1)
+            self.efficientnet = models.efficientnet_b3(weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1)
         except AttributeError:
             # Fallback para versões mais antigas
-            self.efficientnet = models.efficientnet_b7(pretrained=True)
+            self.efficientnet = models.efficientnet_b3(pretrained=True)
         
         # Remover o classificador final
         self.efficientnet.classifier = nn.Sequential(
             nn.Dropout(dropout_rate),
             nn.Linear(1280, num_classes)
         )
+    
+    def forward(self, x):
+        # Extrair features do EfficientNet
+        output = self.efficientnet(x)
+        
+        return output
         
 
 def create_efficientnet_model(num_classes):
@@ -210,7 +216,7 @@ def train_with_wandb():
         project="pad-ufes-20-lesion-classification",
         name="efficientnet-metadata-native",
         config={
-            "architecture": "EfficientNet-B0-Native",
+            "architecture": "EfficientNet-B3-Native",
             "dataset": "PAD-UFES-20",
             "epochs": NUM_EPOCHS,
             "batch_size": BATCH_SIZE,
