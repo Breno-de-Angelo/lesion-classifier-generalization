@@ -42,13 +42,11 @@ class PADUFES20Dataset(Dataset):
         
         # Obter caminhos das imagens e labels
         self.image_paths, self.labels = self.get_image_paths()
-        self.metadata = self.get_metadata_features()
         
         # Filtrar dados válidos
         valid_indices = [i for i, path in enumerate(self.image_paths) if path is not None]
         self.image_paths = [self.image_paths[i] for i in valid_indices]
         self.labels = [self.labels[i] for i in valid_indices]
-        self.metadata = self.metadata[valid_indices]
     
     def __len__(self):
         return len(self.image_paths)
@@ -66,9 +64,8 @@ class PADUFES20Dataset(Dataset):
         
         # Obter label e metadata
         label = self.labels[idx]
-        metadata = self.metadata[idx]
         
-        return image, label, metadata, idx
+        return image, label, idx
     
     def get_image_paths(self):
         """Retorna caminhos das imagens e labels"""
@@ -151,21 +148,18 @@ class PADUFES20Dataset(Dataset):
         train_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
         train_dataset.image_paths = split_data['train'][0]
         train_dataset.labels = split_data['train'][1]
-        train_dataset.metadata = split_data['train'][2]
         train_dataset.is_training = True
         
         # Dataset de validação
         val_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
         val_dataset.image_paths = split_data['val'][0]
         val_dataset.labels = split_data['val'][1]
-        val_dataset.metadata = split_data['val'][2]
         val_dataset.is_training = False
         
         # Dataset de teste
         test_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
         test_dataset.image_paths = split_data['test'][0]
         test_dataset.labels = split_data['test'][1]
-        test_dataset.metadata = split_data['test'][2]
         test_dataset.is_training = False
         
         return train_dataset, val_dataset, test_dataset
