@@ -8,64 +8,40 @@ import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchvision.models as models
 from torch.utils.data import DataLoader
 import wandb
 from lesion_classifier_generalization.pad_ufes_dataset import PADUFES20Dataset
 
 
-class EfficientNetWithMetadata(nn.Module):
+class EfficientNet(nn.Module):
     """
     Modelo EfficientNet com integração de metadados clínicos
     """
-    def __init__(self, num_classes, num_metadata_features=3, dropout_rate=0.5):
+    def __init__(self, num_classes, dropout_rate=0.5):
         super().__init__()
         
         # Carregar EfficientNet pré-treinado
-        import torchvision.models as models
         try:
             # Para versões mais recentes do torchvision
-            self.efficientnet = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+            self.efficientnet = models.efficientnet_b7(weights=models.EfficientNet_B7_Weights.IMAGENET1K_V1)
         except AttributeError:
             # Fallback para versões mais antigas
-            self.efficientnet = models.efficientnet_b0(pretrained=True)
+            self.efficientnet = models.efficientnet_b7(pretrained=True)
         
         # Remover o classificador final
-        self.efficientnet.classifier = nn.Identity()
-        
-        # Feature reducer (equivalente ao neurons_reducer_block do RAUG)
-        self.feature_reducer = nn.Sequential(
-            nn.Linear(1280, 512),  # EfficientNet-B0 features
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Dropout(p=dropout_rate)
+        self.efficientnet.classifier = nn.Sequential(
+            nn.Dropout(dropout_rate),
+            nn.Linear(1280, num_classes)
         )
         
-        # Classificador final com metadados
-        self.classifier = nn.Linear(512 + num_metadata_features, num_classes)
-        
-    def forward(self, x, metadata):
-        # Extrair features do EfficientNet
-        features = self.efficientnet(x)
-        
-        # Reduzir dimensão das features
-        features = self.feature_reducer(features)
-        
-        # Concatenar com metadados (equivalente ao comb_method='concat' do RAUG)
-        combined = torch.cat([features, metadata], dim=1)
-        
-        # Classificação final
-        output = self.classifier(combined)
-        
-        return output
 
-
-def create_efficientnet_model(num_classes, num_metadata_features=3):
+def create_efficientnet_model(num_classes):
     """
-    Cria modelo EfficientNet com metadados
+    Cria modelo EfficientNet
     """
-    model = EfficientNetWithMetadata(
+    model = EfficientNet(
         num_classes=num_classes,
-        num_metadata_features=num_metadata_features,
         dropout_rate=0.5
     )
     
@@ -210,9 +186,9 @@ def train_with_wandb():
     METADATA_FILE = "data/pad_ufes_20/metadata.csv"
     SAVE_FOLDER = "results_pad_ufes_20_wandb"
     IMG_SIZE = 224
-    BATCH_SIZE = 16
+    BATCH_SIZE = 256
     NUM_EPOCHS = 2
-    LEARNING_RATE = 0.001
+    LEARNING_RATE = 1e-5
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     print(f"Usando dispositivo: {DEVICE}")
@@ -287,13 +263,11 @@ def train_with_wandb():
     
     # Criar modelo
     num_classes = len(dataset.label_encoder.classes_)
-    num_metadata_features = split_data['train'][2].shape[1]
     
     print(f"Número de classes: {num_classes}")
     print(f"Classes: {dataset.label_encoder.classes_}")
-    print(f"Número de features de metadados: {num_metadata_features}")
     
-    model = create_efficientnet_model(num_classes, num_metadata_features)
+    model = create_efficientnet_model(num_classes)
     model = model.to(DEVICE)
     
     # Log do modelo para wandb
@@ -401,7 +375,6 @@ def train_with_wandb():
         'test_metrics': test_metrics,
         'classes': dataset.label_encoder.classes_.tolist(),
         'num_classes': num_classes,
-        'num_metadata_features': num_metadata_features,
         'dataset_sizes': {
             'train': len(train_dataset),
             'val': len(val_dataset),
