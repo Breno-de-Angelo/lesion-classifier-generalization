@@ -1,9 +1,10 @@
 """
-Script para training com Weights & Biases (wandb)
+Script para avaliação de modelo treinado
 Dataset: PAD-UFES-20
 Modelo: EfficientNet
 
 Este script usa os módulos organizados do pacote lesion_classifier_generalization
+para avaliar um modelo já treinado, sem executar treinamento.
 """
 
 import os
@@ -15,7 +16,6 @@ from lesion_classifier_generalization import (
     load_pad_ufes_dataset,
     create_dataloaders,
     get_dataset_info,
-    train_model,
     evaluate_model,
     load_checkpoint,
     save_evaluation_results,
@@ -24,48 +24,54 @@ from lesion_classifier_generalization import (
 )
 
 
-def train_with_wandb():
+def evaluate_trained_model():
     """
-    Função principal para training com wandb usando módulos organizados
+    Função principal para avaliação de modelo treinado
     """
 
     # Configurações
     DATA_DIR = "data/pad_ufes_20"
     METADATA_FILE = "data/pad_ufes_20/metadata.csv"
-    SAVE_FOLDER = "results_pad_ufes_20_wandb"
+    CHECKPOINT_PATH = "results_pad_ufes_20_wandb/best_model.pth"
+    SAVE_FOLDER = "evaluation_results"
     IMG_SIZE = 224
     BATCH_SIZE = 256
-    NUM_EPOCHS = 100
-    LEARNING_RATE = 1e-5
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print(f"Usando dispositivo: {DEVICE}")
 
+    # Verificar se o checkpoint existe
+    if not os.path.exists(CHECKPOINT_PATH):
+        print(f"Erro: Checkpoint {CHECKPOINT_PATH} não encontrado!")
+        print("Execute primeiro o script de treinamento ou especifique um checkpoint válido.")
+        return
+
     # Criar diretório de resultados
     os.makedirs(SAVE_FOLDER, exist_ok=True)
 
-    # Inicializar wandb
+    # Inicializar wandb para logging
     wandb.init(
         project="pad-ufes-20-lesion-classification",
-        name="efficientnet-pad",
+        name="efficientnet-evaluation",
         config={
             "architecture": "EfficientNet-B3-Native",
             "dataset": "PAD-UFES-20",
-            "epochs": NUM_EPOCHS,
             "batch_size": BATCH_SIZE,
-            "learning_rate": LEARNING_RATE,
             "img_size": IMG_SIZE,
-            "device": str(DEVICE)
+            "device": str(DEVICE),
+            "mode": "evaluation_only"
         }
     )
 
     try:
         # Carregar dataset usando módulo organizado
+        print("Carregando dataset PAD-UFES-20...")
         dataset, split_data, num_classes, classes = load_pad_ufes_dataset(
             DATA_DIR, METADATA_FILE, IMG_SIZE
         )
         
         # Criar dataloaders usando módulo organizado
+        print("Criando dataloaders...")
         train_loader, val_loader, test_loader = create_dataloaders(
             dataset, split_data, BATCH_SIZE
         )
@@ -77,40 +83,27 @@ def train_with_wandb():
         print(f"Classes: {classes}")
 
         # Criar modelo
+        print("Criando modelo...")
         model = create_efficientnet_model(num_classes)
         model = model.to(DEVICE)
 
-        print("Iniciando training...")
-
-        # Treinar modelo usando módulo organizado
-        training_results = train_model(
-            model=model,
-            train_loader=train_loader,
-            val_loader=val_loader,
-            num_epochs=NUM_EPOCHS,
-            device=DEVICE,
-            save_folder=SAVE_FOLDER,
-            learning_rate=LEARNING_RATE
-        )
-
-        print("Training concluído!")
-        print(f"Melhor val_acc: {training_results['best_val_acc']:.2f}%")
-
-        # Evaluation no conjunto de teste
-        print("Avaliando no conjunto de teste...")
-
-        # Carregar melhor modelo
-        checkpoint = load_checkpoint(
-            training_results['checkpoint_path'], model, DEVICE
-        )
+        # Carregar checkpoint treinado
+        print(f"Carregando checkpoint: {CHECKPOINT_PATH}")
+        checkpoint = load_checkpoint(CHECKPOINT_PATH, model, DEVICE)
 
         if checkpoint is None:
-            print("Usando modelo atual para evaluation...")
+            print("Erro: Não foi possível carregar o checkpoint!")
+            return
+
+        print(f"Checkpoint carregado com sucesso!")
+        print(f"Época: {checkpoint.get('epoch', 'N/A')}")
+        print(f"Validação Accuracy: {checkpoint.get('val_acc', 'N/A'):.2f}%")
 
         # Loss function para evaluation
         criterion = nn.CrossEntropyLoss()
 
-        # Evaluation usando módulo organizado
+        # Evaluation no conjunto de teste
+        print("\nAvaliando no conjunto de teste...")
         test_metrics = evaluate_model(model, test_loader, criterion, DEVICE)
 
         # Log dos resultados para wandb
@@ -125,11 +118,11 @@ def train_with_wandb():
         )
 
         print(f"\nResultados finais salvos em: {SAVE_FOLDER}")
-        print("\n🎉 Training e evaluation concluídos com sucesso!")
+        print("\n🎉 Avaliação concluída com sucesso!")
         print("Acesse o dashboard do wandb para visualizar todos os resultados!")
 
     except Exception as e:
-        print(f"Erro durante o treinamento: {e}")
+        print(f"Erro durante a avaliação: {e}")
         raise
     finally:
         # Finalizar wandb
@@ -137,4 +130,4 @@ def train_with_wandb():
 
 
 if __name__ == "__main__":
-    train_with_wandb()
+    evaluate_trained_model()
