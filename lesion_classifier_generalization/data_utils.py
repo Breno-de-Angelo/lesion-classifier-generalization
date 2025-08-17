@@ -54,20 +54,24 @@ def create_dataloaders(dataset, split_data, batch_size, num_workers=4):
     Cria dataloaders para treinamento, validação e teste
     
     Args:
-        dataset: Dataset PAD-UFES-20
+        dataset: Dataset ISIC ou PAD-UFES-20
         split_data: Dados divididos
         batch_size: Tamanho do batch
         num_workers: Número de workers para carregamento
     
     Returns:
-        tuple: (train_loader, val_loader, test_loader)
+        tuple: (train_loader, val_loader, test_loader) - test_loader pode ser None
     """
     # Criar datasets
     train_dataset, val_dataset, test_dataset = dataset.get_datasets(split_data)
     
     print(f"Train: {len(train_dataset)} imagens")
     print(f"Val: {len(val_dataset)} imagens")
-    print(f"Test: {len(test_dataset)} imagens")
+    
+    if test_dataset is not None:
+        print(f"Test: {len(test_dataset)} imagens")
+    else:
+        print("Test: Dataset de teste oficial não disponível")
     
     # Criar dataloaders
     train_loader = DataLoader(
@@ -86,13 +90,17 @@ def create_dataloaders(dataset, split_data, batch_size, num_workers=4):
         pin_memory=True
     )
     
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True
-    )
+    # Criar test_loader apenas se o dataset de teste estiver disponível
+    if test_dataset is not None:
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True
+        )
+    else:
+        test_loader = None
     
     return train_loader, val_loader, test_loader
 
@@ -110,31 +118,40 @@ def get_dataset_info(dataset, split_data):
     """
     train_dataset, val_dataset, test_dataset = dataset.get_datasets(split_data)
     
-    return {
+    dataset_info = {
         'classes': dataset.label_encoder.classes_.tolist(),
         'num_classes': len(dataset.label_encoder.classes_),
         'dataset_sizes': {
             'train': len(train_dataset),
-            'val': len(val_dataset),
-            'test': len(test_dataset)
+            'val': len(val_dataset)
         }
     }
+    
+    # Adicionar informações de teste se disponível
+    if test_dataset is not None:
+        dataset_info['dataset_sizes']['test'] = len(test_dataset)
+    else:
+        dataset_info['dataset_sizes']['test'] = 0
+    
+    return dataset_info
 
 
 def load_isic_dataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020, 
-                     img_size, test_size=0.2, val_size=0.2, desired_classes=None):
+                     img_size, val_size=0.2, desired_classes=None, 
+                     test_metadata_2019=None, test_metadata_2020=None):
     """
     Carrega e prepara os datasets ISIC 2019 e 2020
     
     Args:
         data_dir_2019: Diretório com as imagens do ISIC 2019
         data_dir_2020: Diretório com as imagens do ISIC 2020
-        metadata_2019: Arquivo de metadados do ISIC 2019
-        metadata_2020: Arquivo de metadados do ISIC 2020
+        metadata_2019: Arquivo de metadados de treino do ISIC 2019
+        metadata_2020: Arquivo de metadados de treino do ISIC 2020
         img_size: Tamanho das imagens
-        test_size: Proporção para teste
-        val_size: Proporção para validação
+        val_size: Proporção para validação (dos dados de treino)
         desired_classes: Lista de classes desejadas (opcional)
+        test_metadata_2019: Arquivo de metadados de teste do ISIC 2019 (opcional)
+        test_metadata_2020: Arquivo de metadados de teste do ISIC 2020 (opcional)
     
     Returns:
         tuple: (dataset, split_data, num_classes, classes)
@@ -154,13 +171,13 @@ def load_isic_dataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020
     
     print("Carregando datasets ISIC 2019 e 2020...")
     
-    # Carregar dataset
+    # Carregar dataset com dados de teste se fornecidos
     dataset = ISICDataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020, 
-                         img_size, desired_classes)
+                         img_size, desired_classes, test_metadata_2019, test_metadata_2020)
 
-    # Dividir dados
-    print("Dividindo dados em train/val/test...")
-    split_data = dataset.split_data(test_size=test_size, val_size=val_size)
+    # Dividir dados de treino em train/val
+    print("Dividindo dados de treino em train/val...")
+    split_data = dataset.split_data(val_size=val_size)
     
     # Obter informações
     num_classes = len(dataset.label_encoder.classes_)

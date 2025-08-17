@@ -34,6 +34,8 @@ def train_with_wandb():
     DATA_DIR_2020 = "data/isic2020"
     METADATA_2019 = "data/isic2019/ISIC_2019_Training_GroundTruth.csv"
     METADATA_2020 = "data/isic2020/ISIC_2020_Training_GroundTruth_v2.csv"
+    TEST_METADATA_2019 = "data/isic2019/ISIC_2019_Test_GroundTruth.csv"
+    TEST_METADATA_2020 = "data/isic2020/ISIC_2020_Test_Metadata.csv"
     SAVE_FOLDER = "results_isic_2019_2020_wandb"
     IMG_SIZE = 224
     BATCH_SIZE = 32
@@ -74,7 +76,9 @@ def train_with_wandb():
         dataset, split_data, num_classes, classes = load_isic_dataset(
             DATA_DIR_2019, DATA_DIR_2020, 
             METADATA_2019, METADATA_2020, 
-            IMG_SIZE, desired_classes=desired_classes
+            IMG_SIZE, desired_classes=desired_classes,
+            test_metadata_2019=TEST_METADATA_2019,
+            test_metadata_2020=TEST_METADATA_2020
         )
         
         # Criar dataloaders usando módulo organizado
@@ -117,22 +121,28 @@ def train_with_wandb():
         # Loss function para evaluation
         criterion = nn.CrossEntropyLoss()
 
-        # Evaluation usando módulo organizado
-        test_metrics = evaluate_model(model, test_loader, criterion, DEVICE)
+        # Verificar se o dataset de teste está disponível
+        if test_loader is not None:
+            # Evaluation usando módulo organizado
+            test_metrics = evaluate_model(model, test_loader, criterion, DEVICE)
 
-        # Log dos resultados para wandb
-        log_evaluation_to_wandb(test_metrics, dataset_info)
+            # Log dos resultados para wandb
+            log_evaluation_to_wandb(test_metrics, dataset_info)
 
-        # Imprimir resumo da avaliação
-        print_evaluation_summary(test_metrics)
+            # Imprimir resumo da avaliação
+            print_evaluation_summary(test_metrics)
 
-        # Salvar resultados finais
-        save_evaluation_results(
-            test_metrics, dataset_info, SAVE_FOLDER, checkpoint
-        )
+            # Salvar resultados finais
+            save_evaluation_results(
+                test_metrics, dataset_info, SAVE_FOLDER, checkpoint
+            )
 
-        print(f"\nResultados finais salvos em: {SAVE_FOLDER}")
-        print("\n🎉 Training e evaluation concluídos com sucesso!")
+            print(f"\nResultados finais salvos em: {SAVE_FOLDER}")
+        else:
+            print("⚠️  Dataset de teste oficial não disponível. Pulando evaluation no conjunto de teste.")
+            print("O modelo foi treinado e validado com sucesso, mas não foi possível avaliar no conjunto de teste oficial.")
+
+        print("\n🎉 Training concluído com sucesso!")
         print("Acesse o dashboard do wandb para visualizar todos os resultados!")
 
     except Exception as e:
