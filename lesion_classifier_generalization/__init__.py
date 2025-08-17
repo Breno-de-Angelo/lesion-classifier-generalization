@@ -12,9 +12,10 @@ from .eval import (
     log_evaluation_to_wandb, print_evaluation_summary
 )
 from .data_utils import (
-    load_pad_ufes_dataset, create_dataloaders, get_dataset_info
+    load_pad_ufes_dataset, load_isic_dataset, create_dataloaders, get_dataset_info
 )
 from .pad_ufes_dataset import PADUFES20Dataset
+from .isic_dataset import ISICDataset
 
 __version__ = "0.1.0"
 __author__ = "Lesion Classifier Team"
@@ -39,9 +40,11 @@ __all__ = [
     
     # Data utilities
     "load_pad_ufes_dataset",
+    "load_isic_dataset",
     "create_dataloaders",
     "get_dataset_info",
     
-    # Dataset
-    "PADUFES20Dataset"
+    # Datasets
+    "PADUFES20Dataset",
+    "ISICDataset"
 ]

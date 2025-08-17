@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from PIL import Image
+from sklearn.model_selection import GroupShuffleSplit
 
 
 class PADUFES20Dataset(Dataset):
@@ -12,13 +13,17 @@ class PADUFES20Dataset(Dataset):
     Classe para carregar e preparar o dataset PAD-UFES-20
     """
     
-    def __init__(self, data_dir, metadata_file, img_size=224):
+    def __init__(self, data_dir, metadata_file, img_size=224, desired_classes=None):
         self.data_dir = data_dir
         self.metadata_file = metadata_file
         self.img_size = img_size
+        self.desired_classes = desired_classes
         
         # Carregar metadados
         self.df = pd.read_csv(metadata_file)
+
+        if desired_classes:
+            self.df = self.df[self.df['diagnostic'].isin(desired_classes)]
         
         # Preparar labels
         self.label_encoder = LabelEncoder()
@@ -41,7 +46,7 @@ class PADUFES20Dataset(Dataset):
         ])
         
         # Obter caminhos das imagens e labels
-        self.image_paths, self.labels = self.get_image_paths()
+        self.image_paths, self.labels, self.patient_ids = self.get_image_paths()
         
         # Filtrar dados válidos
         valid_indices = [i for i, path in enumerate(self.image_paths) if path is not None]
@@ -71,8 +76,10 @@ class PADUFES20Dataset(Dataset):
         """Retorna caminhos das imagens e labels"""
         image_paths = []
         labels = []
+        patient_ids = []
         
         for idx, row in self.df.iterrows():
+
             # Construir caminho da imagem usando img_id (não image_name)
             img_name = row['img_id']
             
@@ -82,8 +89,9 @@ class PADUFES20Dataset(Dataset):
             if img_path:
                 image_paths.append(img_path)
                 labels.append(row['label_encoded'])
-        
-        return image_paths, labels
+                patient_ids.append(row['patient_id'])
+                
+        return image_paths, labels, patient_ids
     
     def _find_image_path(self, img_name):
         """Procura uma imagem recursivamente nos subdiretórios"""
@@ -100,46 +108,41 @@ class PADUFES20Dataset(Dataset):
         
         return None
     
-    def get_metadata_features(self):
-        """Retorna features clínicas para treinamento"""
-        # Selecionar features numéricas relevantes
-        numeric_features = ['age', 'diameter_1', 'diameter_2']
-        
-        # Preencher valores NaN com médias
-        metadata_df = self.df[numeric_features].fillna(self.df[numeric_features].mean())
-        
-        # Normalizar features
-        metadata_df = (metadata_df - metadata_df.mean()) / metadata_df.std()
-        
-        return metadata_df.values
-    
     def split_data(self, test_size=0.2, val_size=0.2, random_state=42):
         """Divide os dados em train/val/test"""
-        image_paths, labels = self.get_image_paths()
-        metadata = self.get_metadata_features()
-        
         # Filtrar dados válidos
-        valid_indices = [i for i, path in enumerate(image_paths) if path is not None]
-        image_paths = [image_paths[i] for i in valid_indices]
-        labels = [labels[i] for i in valid_indices]
-        metadata = metadata[valid_indices]
-        
+        valid_indices = [i for i, path in enumerate(self.image_paths) if path is not None]
+        self.image_paths = [self.image_paths[i] for i in valid_indices]
+        self.labels = [self.labels[i] for i in valid_indices]
+        self.patient_ids = [self.patient_ids[i] for i in valid_indices]
+
         # Primeira divisão: train+val vs test
-        X_temp, X_test, y_temp, y_test, meta_temp, meta_test = train_test_split(
-            image_paths, labels, metadata, test_size=test_size, 
-            random_state=random_state, stratify=labels
-        )
+        gss_test = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+        temp_idx, test_idx = next(gss_test.split(self.image_paths, self.labels, groups=self.patient_ids))
         
+        # Converter arrays NumPy para listas de índices inteiros
+        temp_idx = temp_idx.tolist()
+        test_idx = test_idx.tolist()
+        
+        X_temp, y_temp, groups_temp = [self.image_paths[i] for i in temp_idx], [self.labels[i] for i in temp_idx], [self.patient_ids[i] for i in temp_idx]
+        X_test, y_test = [self.image_paths[i] for i in test_idx], [self.labels[i] for i in test_idx]
+
         # Segunda divisão: train vs val
-        X_train, X_val, y_train, y_val, meta_train, meta_val = train_test_split(
-            X_temp, y_temp, meta_temp, test_size=val_size/(1-test_size), 
-            random_state=random_state, stratify=y_temp
-        )
+        adjusted_val_size = val_size / (1 - test_size)
+        gss_val = GroupShuffleSplit(n_splits=1, test_size=adjusted_val_size, random_state=random_state)
+        train_idx, val_idx = next(gss_val.split(X_temp, y_temp, groups=groups_temp))
         
+        # Converter arrays NumPy para listas de índices inteiros
+        train_idx = train_idx.tolist()
+        val_idx = val_idx.tolist()
+        
+        X_train, y_train = [X_temp[i] for i in train_idx], [y_temp[i] for i in train_idx]
+        X_val, y_val = [X_temp[i] for i in val_idx], [y_temp[i] for i in val_idx]
+
         return {
-            'train': (X_train, y_train, meta_train),
-            'val': (X_val, y_val, meta_val),
-            'test': (X_test, y_test, meta_test)
+            'train': (X_train, y_train),
+            'val': (X_val, y_val),
+            'test': (X_test, y_test)
         }
     
     def get_datasets(self, split_data):
