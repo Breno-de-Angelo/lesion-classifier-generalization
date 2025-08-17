@@ -34,9 +34,9 @@ def train_with_wandb():
     METADATA_FILE = "data/pad_ufes_20/metadata.csv"
     SAVE_FOLDER = "results_pad_ufes_20_wandb"
     IMG_SIZE = 224
-    BATCH_SIZE = 256
+    BATCH_SIZE = 32
     NUM_EPOCHS = 100
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 1e-4
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print(f"Usando dispositivo: {DEVICE}")
@@ -62,7 +62,7 @@ def train_with_wandb():
     try:
         # Carregar dataset usando módulo organizado
         dataset, split_data, num_classes, classes = load_pad_ufes_dataset(
-            DATA_DIR, METADATA_FILE, IMG_SIZE
+            DATA_DIR, METADATA_FILE, IMG_SIZE, desired_classes=["SEK", "BCC", "NEV", "MEL"]
         )
         
         # Criar dataloaders usando módulo organizado
@@ -73,14 +73,9 @@ def train_with_wandb():
         # Obter informações do dataset
         dataset_info = get_dataset_info(dataset, split_data)
         
-        print(f"Número de classes: {num_classes}")
-        print(f"Classes: {classes}")
-
         # Criar modelo
         model = create_efficientnet_model(num_classes)
         model = model.to(DEVICE)
-
-        print("Iniciando training...")
 
         # Treinar modelo usando módulo organizado
         training_results = train_model(
