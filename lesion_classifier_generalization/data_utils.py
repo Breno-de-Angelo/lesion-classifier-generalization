@@ -67,11 +67,7 @@ def create_dataloaders(dataset, split_data, batch_size, num_workers=4):
     
     print(f"Train: {len(train_dataset)} imagens")
     print(f"Val: {len(val_dataset)} imagens")
-    
-    if test_dataset is not None:
-        print(f"Test: {len(test_dataset)} imagens")
-    else:
-        print("Test: Dataset de teste oficial não disponível")
+    print(f"Test: {len(test_dataset)} imagens")
     
     # Criar dataloaders
     train_loader = DataLoader(
@@ -90,17 +86,14 @@ def create_dataloaders(dataset, split_data, batch_size, num_workers=4):
         pin_memory=True
     )
     
-    # Criar test_loader apenas se o dataset de teste estiver disponível
-    if test_dataset is not None:
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            pin_memory=True
-        )
-    else:
-        test_loader = None
+    # Criar test_loader (dados divididos dos dados de treino)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
     
     return train_loader, val_loader, test_loader
 
@@ -116,29 +109,22 @@ def get_dataset_info(dataset, split_data):
     Returns:
         dict: Informações do dataset
     """
-    train_dataset, val_dataset, test_dataset = dataset.get_datasets(split_data)
-    
+    # Usar as informações já disponíveis sem carregar os datasets novamente
     dataset_info = {
         'classes': dataset.label_encoder.classes_.tolist(),
         'num_classes': len(dataset.label_encoder.classes_),
         'dataset_sizes': {
-            'train': len(train_dataset),
-            'val': len(val_dataset)
+            'train': len(split_data['train'][0]),
+            'val': len(split_data['val'][0]),
+            'test': len(split_data['test'][0])
         }
     }
-    
-    # Adicionar informações de teste se disponível
-    if test_dataset is not None:
-        dataset_info['dataset_sizes']['test'] = len(test_dataset)
-    else:
-        dataset_info['dataset_sizes']['test'] = 0
     
     return dataset_info
 
 
 def load_isic_dataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020, 
-                     img_size, val_size=0.2, desired_classes=None, 
-                     test_metadata_2019=None, test_metadata_2020=None):
+                     img_size, val_size=0.2, desired_classes=None):
     """
     Carrega e prepara os datasets ISIC 2019 e 2020
     
@@ -150,11 +136,9 @@ def load_isic_dataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020
         img_size: Tamanho das imagens
         val_size: Proporção para validação (dos dados de treino)
         desired_classes: Lista de classes desejadas (opcional)
-        test_metadata_2019: Arquivo de metadados de teste do ISIC 2019 (opcional)
-        test_metadata_2020: Arquivo de metadados de teste do ISIC 2020 (opcional)
     
     Returns:
-        tuple: (dataset, split_data, num_classes, classes)
+        tuple: (dataset, split_data, num_classes, classes, dataset_info)
     """
     # Verificar se os dados existem
     if not os.path.exists(data_dir_2019):
@@ -171,19 +155,30 @@ def load_isic_dataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020
     
     print("Carregando datasets ISIC 2019 e 2020...")
     
-    # Carregar dataset com dados de teste se fornecidos
+    # Carregar dataset
     dataset = ISICDataset(data_dir_2019, data_dir_2020, metadata_2019, metadata_2020, 
-                         img_size, desired_classes, test_metadata_2019, test_metadata_2020)
+                         img_size, desired_classes)
 
-    # Dividir dados de treino em train/val
-    print("Dividindo dados de treino em train/val...")
-    split_data = dataset.split_data(val_size=val_size)
+    # Dividir dados de treino em train/val/test (60/20/20)
+    print("Dividindo dados de treino em train/val/test (60/20/20)...")
+    split_data = dataset.split_data(test_size=0.2, val_size=0.2)
     
     # Obter informações
     num_classes = len(dataset.label_encoder.classes_)
     classes = dataset.label_encoder.classes_
     
+    # Criar dataset_info diretamente aqui para evitar chamadas desnecessárias
+    dataset_info = {
+        'classes': classes.tolist(),
+        'num_classes': num_classes,
+        'dataset_sizes': {
+            'train': len(split_data['train'][0]),
+            'val': len(split_data['val'][0]),
+            'test': len(split_data['test'][0])
+        }
+    }
+    
     print(f"Número de classes: {num_classes}")
     print(f"Classes: {classes}")
     
-    return dataset, split_data, num_classes, classes
+    return dataset, split_data, num_classes, classes, dataset_info
