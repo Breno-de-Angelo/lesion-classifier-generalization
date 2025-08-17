@@ -10,6 +10,8 @@ from torch.utils.data import DataLoader
 import wandb
 from tqdm import tqdm
 import time
+import numpy as np
+from sklearn.metrics import balanced_accuracy_score, accuracy_score, classification_report
 
 
 def format_time(seconds):
@@ -27,12 +29,51 @@ def format_time(seconds):
         return f"{hours}h {minutes}m {seconds:.1f}s"
 
 
-def train_epoch(model, train_loader, criterion, optimizer, device, epoch):
+def calculate_metrics(predictions, labels, num_classes):
+    """Calcula métricas de acurácia global e balanceada"""
+    # Converter para numpy para cálculo das métricas
+    if isinstance(predictions, list):
+        predicted_np = np.array(predictions)
+    else:
+        predicted_np = predictions.cpu().numpy() if torch.is_tensor(predictions) else predictions
+    
+    if isinstance(labels, list):
+        labels_np = np.array(labels)
+    else:
+        labels_np = labels.cpu().numpy() if torch.is_tensor(labels) else labels
+    
+    # Garantir que são arrays numpy
+    predicted_np = np.asarray(predicted_np)
+    labels_np = np.asarray(labels_np)
+    
+    # Acurácia global
+    global_acc = accuracy_score(labels_np, predicted_np)
+    
+    # Acurácia balanceada
+    balanced_acc = balanced_accuracy_score(labels_np, predicted_np)
+    
+    # Acurácia por classe
+    class_acc = []
+    for i in range(num_classes):
+        mask = labels_np == i
+        if np.sum(mask) > 0:
+            class_acc.append(accuracy_score(labels_np[mask], predicted_np[mask]))
+        else:
+            class_acc.append(0.0)
+    
+    return global_acc, balanced_acc, class_acc, predicted_np, labels_np
+
+
+def train_epoch(model, train_loader, criterion, optimizer, device, epoch, num_classes):
     """Training de uma época com indicadores visuais detalhados"""
     model.train()
     total_loss = 0
     correct = 0
     total = 0
+    
+    # Para métricas balanceadas
+    all_predictions = []
+    all_labels = []
     
     # Configurar barra de progresso
     num_batches = len(train_loader)
@@ -67,6 +108,10 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch):
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
         
+        # Coletar predições e labels para métricas balanceadas
+        all_predictions.extend(predicted.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+        
         # Calcular tempo do batch
         batch_time = time.time() - batch_start
         batch_times.append(batch_time)
@@ -95,24 +140,34 @@ def train_epoch(model, train_loader, criterion, optimizer, device, epoch):
     epoch_loss = total_loss / len(train_loader)
     epoch_acc = 100. * correct / total
     
+    # Calcular métricas balanceadas
+    global_acc, balanced_acc, class_acc, _, _ = calculate_metrics(
+        all_predictions, all_labels, num_classes
+    )
+    
     # Estatísticas finais da época
     avg_batch_time = sum(batch_times) / len(batch_times)
     print(f"\n📊 Epoch {epoch+1} [TRAIN] - Resumo:")
     print(f"   ⏱️  Tempo total: {format_time(epoch_time)}")
     print(f"   📈 Loss médio: {epoch_loss:.4f}")
-    print(f"   🎯 Acurácia: {epoch_acc:.2f}%")
+    print(f"   🎯 Acurácia Global: {epoch_acc:.2f}%")
+    print(f"   ⚖️  Acurácia Balanceada: {balanced_acc*100:.2f}%")
     print(f"   ⚡ Tempo médio por batch: {avg_batch_time:.3f}s")
     print(f"   📦 Total de batches: {num_batches}")
     
-    return epoch_loss, epoch_acc
+    return epoch_loss, epoch_acc, balanced_acc
 
 
-def validate_epoch(model, val_loader, criterion, device, epoch):
+def validate_epoch(model, val_loader, criterion, device, epoch, num_classes):
     """Validação de uma época com indicadores visuais"""
     model.eval()
     total_loss = 0
     correct = 0
     total = 0
+    
+    # Para métricas balanceadas
+    all_predictions = []
+    all_labels = []
     
     # Configurar barra de progresso para validação
     pbar = tqdm(
@@ -137,6 +192,10 @@ def validate_epoch(model, val_loader, criterion, device, epoch):
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
             
+            # Coletar predições e labels para métricas balanceadas
+            all_predictions.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            
             # Calcular métricas atuais
             current_loss = total_loss / (batch_idx + 1)
             current_acc = 100. * correct / total
@@ -152,13 +211,19 @@ def validate_epoch(model, val_loader, criterion, device, epoch):
     epoch_loss = total_loss / len(val_loader)
     epoch_acc = 100. * correct / total
     
+    # Calcular métricas balanceadas
+    global_acc, balanced_acc, class_acc, _, _ = calculate_metrics(
+        all_predictions, all_labels, num_classes
+    )
+    
     # Estatísticas finais da validação
     print(f"📊 Epoch {epoch+1} [VAL] - Resumo:")
     print(f"   ⏱️  Tempo total: {format_time(epoch_time)}")
     print(f"   📈 Loss médio: {epoch_loss:.4f}")
-    print(f"   🎯 Acurácia: {epoch_acc:.2f}%")
+    print(f"   🎯 Acurácia Global: {epoch_acc:.2f}%")
+    print(f"   ⚖️  Acurácia Balanceada: {balanced_acc*100:.2f}%")
     
-    return epoch_loss, epoch_acc
+    return epoch_loss, epoch_acc, balanced_acc
 
 
 def train_model(model, train_loader, val_loader, num_epochs, device, save_folder, 
@@ -181,6 +246,9 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         dict: Dicionário com histórico de treinamento
     """
     
+    # Obter número de classes
+    num_classes = len(train_loader.dataset.label_encoder.classes_)
+    
     # Loss function e optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -201,12 +269,14 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
     print(f"   ⚖️  Weight decay: {weight_decay}")
     print(f"   💾 Pasta de salvamento: {save_folder}")
     print(f"   🔧 Dispositivo: {device}")
+    print(f"   🏷️  Número de classes: {num_classes}")
     print("=" * 80)
     
+    best_val_balanced_acc = 0.0
     best_val_acc = 0.0
     training_history = {
-        'train_loss': [], 'train_acc': [],
-        'val_loss': [], 'val_acc': [],
+        'train_loss': [], 'train_acc': [], 'train_balanced_acc': [],
+        'val_loss': [], 'val_acc': [], 'val_balanced_acc': [],
         'learning_rate': []
     }
     
@@ -221,12 +291,12 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         print(f"⏰ Iniciando em: {time.strftime('%H:%M:%S')}")
         
         # Training
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, epoch)
+        train_loss, train_acc, train_balanced_acc = train_epoch(model, train_loader, criterion, optimizer, device, epoch, num_classes)
         
         # Validation
-        val_loss, val_acc = validate_epoch(model, val_loader, criterion, device, epoch)
+        val_loss, val_acc, val_balanced_acc = validate_epoch(model, val_loader, criterion, device, epoch, num_classes)
         
-        # Learning rate scheduling
+        # Learning rate scheduling (usar loss para scheduling)
         old_lr = optimizer.param_groups[0]['lr']
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]['lr']
@@ -236,16 +306,20 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
             "epoch": epoch,
             "train_loss": train_loss,
             "train_accuracy": train_acc,
+            "train_balanced_accuracy": train_balanced_acc * 100,
             "val_loss": val_loss,
             "val_accuracy": val_acc,
+            "val_balanced_accuracy": val_balanced_acc * 100,
             "learning_rate": current_lr
         })
         
         # Salvar histórico
         training_history['train_loss'].append(train_loss)
         training_history['train_acc'].append(train_acc)
+        training_history['train_balanced_acc'].append(train_balanced_acc)
         training_history['val_loss'].append(val_loss)
         training_history['val_acc'].append(val_acc)
+        training_history['val_balanced_acc'].append(val_balanced_acc)
         training_history['learning_rate'].append(current_lr)
         
         # Calcular tempo da época
@@ -257,8 +331,8 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         
         # Resumo da época
         print(f"\n🎯 EPOCH {epoch+1} - Resumo Final:")
-        print(f"   📈 Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-        print(f"   🔍 Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%")
+        print(f"   📈 Train - Loss: {train_loss:.4f} | Global Acc: {train_acc:.2f}% | Balanced Acc: {train_balanced_acc*100:.2f}%")
+        print(f"   🔍 Val - Loss: {val_loss:.4f} | Global Acc: {val_acc:.2f}% | Balanced Acc: {val_balanced_acc*100:.2f}%")
         print(f"   🧠 Learning Rate: {current_lr:.6f}")
         if old_lr != current_lr:
             print(f"   ⚡ LR reduzido de {old_lr:.6f} para {current_lr:.6f}")
@@ -267,26 +341,31 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         print(f"   ⏱️  Tempo médio por época: {format_time(avg_epoch_time)}")
         print(f"   ⏱️  Tempo restante estimado: {format_time(estimated_remaining)}")
         
-        # Salvar melhor modelo
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        # Salvar melhor modelo baseado na acurácia balanceada
+        if val_balanced_acc > best_val_balanced_acc:
+            best_val_balanced_acc = val_balanced_acc
+            best_val_acc = val_acc  # Atualizar também a melhor acurácia global
             checkpoint_path = os.path.join(save_folder, 'best_model.pth')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_acc': val_acc,
+                'val_balanced_acc': val_balanced_acc,
                 'training_history': training_history
             }, checkpoint_path)
             
             # Log do melhor modelo para wandb
+            wandb.run.summary["best_val_balanced_accuracy"] = val_balanced_acc * 100
             wandb.run.summary["best_val_accuracy"] = val_acc
             wandb.run.summary["best_epoch"] = epoch
             
-            print(f"   🏆 🆕 NOVO MELHOR MODELO! Val Acc: {val_acc:.2f}%")
+            print(f"   🏆 🆕 NOVO MELHOR MODELO! Val Balanced Acc: {val_balanced_acc*100:.2f}%")
+            print(f"   🎯 Val Global Acc: {val_acc:.2f}%")
             print(f"   💾 Modelo salvo em: {checkpoint_path}")
         else:
-            print(f"   🏆 Melhor val_acc até agora: {best_val_acc:.2f}%")
+            print(f"   🏆 Melhor val_balanced_acc até agora: {best_val_balanced_acc*100:.2f}%")
+            print(f"   🎯 Melhor val_global_acc até agora: {best_val_acc:.2f}%")
         
         print(f"{'='*60}")
     
@@ -295,15 +374,18 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
     print(f"\n🎉 TRAINING CONCLUÍDO!")
     print("=" * 80)
     print(f"📊 Estatísticas Finais:")
-    print(f"   🏆 Melhor val_acc: {best_val_acc:.2f}%")
+    print(f"   🏆 Melhor val_balanced_acc: {best_val_balanced_acc*100:.2f}%")
+    print(f"   🎯 Melhor val_global_acc: {best_val_acc:.2f}%")
     print(f"   ⏱️  Tempo total: {format_time(total_time)}")
     print(f"   ⏱️  Tempo médio por época: {format_time(total_time/num_epochs)}")
     print(f"   📈 Loss final (train/val): {training_history['train_loss'][-1]:.4f}/{training_history['val_loss'][-1]:.4f}")
-    print(f"   🎯 Acc final (train/val): {training_history['train_acc'][-1]:.2f}%/{training_history['val_acc'][-1]:.2f}%")
+    print(f"   🎯 Global Acc final (train/val): {training_history['train_acc'][-1]:.2f}%/{training_history['val_acc'][-1]:.2f}%")
+    print(f"   ⚖️  Balanced Acc final (train/val): {training_history['train_balanced_acc'][-1]*100:.2f}%/{training_history['val_balanced_acc'][-1]*100:.2f}%")
     print(f"   💾 Checkpoint salvo em: {os.path.join(save_folder, 'best_model.pth')}")
     print("=" * 80)
     
     return {
+        'best_val_balanced_acc': best_val_balanced_acc,
         'best_val_acc': best_val_acc,
         'training_history': training_history,
         'checkpoint_path': os.path.join(save_folder, 'best_model.pth')
