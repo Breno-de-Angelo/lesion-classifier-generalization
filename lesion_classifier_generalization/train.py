@@ -227,7 +227,7 @@ def validate_epoch(model, val_loader, criterion, device, epoch, num_classes):
 
 
 def train_model(model, train_loader, val_loader, num_epochs, device, save_folder, 
-                learning_rate=1e-5, weight_decay=0.01, patience=5):
+                learning_rate=1e-5, weight_decay=0.01, scheduler_patience=5, early_stopping_patience=10):
     """
     Função principal de treinamento com indicadores visuais aprimorados
     
@@ -252,7 +252,7 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
     # Loss function e optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=patience, factor=0.5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=scheduler_patience, factor=0.5)
     
     # Log do modelo para wandb
     wandb.watch(model, log="all")
@@ -279,7 +279,8 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         'val_loss': [], 'val_acc': [], 'val_balanced_acc': [],
         'learning_rate': []
     }
-    
+    epochs_no_improve = 0
+
     # Estatísticas de tempo
     total_start_time = time.time()
     epoch_times = []
@@ -343,6 +344,7 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         
         # Salvar melhor modelo baseado na acurácia balanceada
         if val_balanced_acc > best_val_balanced_acc:
+            epochs_no_improve = 0
             best_val_balanced_acc = val_balanced_acc
             best_val_acc = val_acc  # Atualizar também a melhor acurácia global
             checkpoint_path = os.path.join(save_folder, 'best_model.pth')
@@ -364,10 +366,16 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
             print(f"   🎯 Val Global Acc: {val_acc:.2f}%")
             print(f"   💾 Modelo salvo em: {checkpoint_path}")
         else:
+            epochs_no_improve += 1
             print(f"   🏆 Melhor val_balanced_acc até agora: {best_val_balanced_acc*100:.2f}%")
             print(f"   🎯 Melhor val_global_acc até agora: {best_val_acc:.2f}%")
         
         print(f"{'='*60}")
+
+        if epochs_no_improve >= early_stopping_patience:
+            print(f"\n🛑 Early stopping ativado após {early_stopping_patience} épocas sem melhora.")
+            print(f"   O melhor modelo foi salvo na época {epoch - epochs_no_improve + 1} com acurácia de {best_val_balanced_acc*100:.2f}%.")
+            break
     
     # Estatísticas finais
     total_time = time.time() - total_start_time

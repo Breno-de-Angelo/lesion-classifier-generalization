@@ -38,7 +38,7 @@ def train_with_wandb():
     IMG_SIZE = 224
     BATCH_SIZE = 32
     NUM_EPOCHS = 100
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 5e-5
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print(f"Usando dispositivo: {DEVICE}")
