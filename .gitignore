@@ -2,6 +2,7 @@ data/
 raug/
 results*/
 wandb/
+evaluation_results/
 
 *.pyc
 .venv/

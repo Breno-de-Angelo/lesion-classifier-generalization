@@ -118,11 +118,27 @@ def save_evaluation_results(test_metrics, dataset_info, save_folder, checkpoint_
         save_folder: Pasta para salvar resultados
         checkpoint_info: Informações do checkpoint (opcional)
     """
+    # Converter tipos numpy para tipos Python nativos para serialização JSON
+    def convert_numpy_types(obj):
+        if hasattr(obj, 'item'):
+            return obj.item()
+        elif isinstance(obj, dict):
+            return {k: convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(v) for v in obj]
+        elif isinstance(obj, tuple):
+            return tuple(convert_numpy_types(v) for v in obj)
+        else:
+            return obj
+    
+    # Converter classes numpy array para lista
+    classes_list = dataset_info['classes'].tolist() if hasattr(dataset_info['classes'], 'tolist') else list(dataset_info['classes'])
+    
     results = {
-        'test_metrics': test_metrics,
-        'classes': dataset_info['classes'],
-        'num_classes': dataset_info['num_classes'],
-        'dataset_sizes': dataset_info['dataset_sizes']
+        'test_metrics': convert_numpy_types(test_metrics),
+        'classes': classes_list,
+        'num_classes': int(dataset_info['num_classes']),
+        'dataset_sizes': convert_numpy_types(dataset_info['dataset_sizes'])
     }
     
     if checkpoint_info:
@@ -149,7 +165,7 @@ def log_evaluation_to_wandb(test_metrics, dataset_info):
         test_metrics: Métricas de teste
         dataset_info: Informações do dataset
     """
-    # Log dos resultados finais para wandb
+    # Log dos resultados básicos para wandb
     wandb.log({
         "test_loss": test_metrics['loss'],
         "test_accuracy": test_metrics['accuracy'],
@@ -157,6 +173,19 @@ def log_evaluation_to_wandb(test_metrics, dataset_info):
         "test_balanced_accuracy": test_metrics['balanced_accuracy'],
         "test_auc": test_metrics['auc']
     })
+    
+    # Log das métricas adicionais se disponíveis
+    if 'additional_metrics' in test_metrics:
+        additional = test_metrics['additional_metrics']
+        wandb.log({
+            "test_cohen_kappa": additional.get('cohen_kappa', 0),
+            "test_macro_precision": additional.get('macro_precision', 0),
+            "test_macro_recall": additional.get('macro_recall', 0),
+            "test_macro_f1": additional.get('macro_f1', 0),
+            "test_weighted_precision": additional.get('weighted_precision', 0),
+            "test_weighted_recall": additional.get('weighted_recall', 0),
+            "test_weighted_f1": additional.get('weighted_f1', 0)
+        })
 
     # Atualizar summary do wandb
     wandb.run.summary.update({
@@ -166,6 +195,15 @@ def log_evaluation_to_wandb(test_metrics, dataset_info):
         "dataset_size": sum(dataset_info['dataset_sizes'].values()),
         "num_classes": dataset_info['num_classes']
     })
+    
+    # Atualizar summary com métricas adicionais se disponíveis
+    if 'additional_metrics' in test_metrics:
+        additional = test_metrics['additional_metrics']
+        wandb.run.summary.update({
+            "final_test_cohen_kappa": additional.get('cohen_kappa', 0),
+            "final_test_macro_f1": additional.get('macro_f1', 0),
+            "final_test_weighted_f1": additional.get('weighted_f1', 0)
+        })
 
 
 def print_evaluation_summary(test_metrics):

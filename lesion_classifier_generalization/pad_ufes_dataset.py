@@ -70,7 +70,7 @@ class PADUFES20Dataset(Dataset):
         # Obter label e metadata
         label = self.labels[idx]
         
-        return image, label, idx
+        return image, label, img_path
     
     def get_image_paths(self):
         """Retorna caminhos das imagens e labels"""
