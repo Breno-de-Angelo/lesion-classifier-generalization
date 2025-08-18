@@ -1,6 +1,6 @@
 """
 Script para avaliação de modelo treinado
-Dataset: PAD-UFES-20
+Dataset: ISIC 2019 + 2020
 Modelo: EfficientNet
 
 Este script usa os módulos organizados do pacote lesion_classifier_generalization
@@ -20,7 +20,7 @@ from sklearn.metrics import (
 )
 from lesion_classifier_generalization import (
     create_efficientnet_model,
-    load_pad_ufes_dataset,
+    load_isic_dataset,
     create_dataloaders,
     get_dataset_info,
     evaluate_model,
@@ -50,7 +50,7 @@ def create_confusion_matrix(y_true, y_pred, classes, save_path):
     # Criar heatmap
     sns.heatmap(cm_normalized, annot=True, fmt='.2f', cmap='Blues',
                 xticklabels=classes, yticklabels=classes)
-    plt.title('Matriz de Confusão Normalizada')
+    plt.title('Matriz de Confusão Normalizada - ISIC 2019+2020')
     plt.xlabel('Predição')
     plt.ylabel('Valor Real')
     plt.xticks(rotation=45)
@@ -166,7 +166,7 @@ def evaluate_model_complete(model, test_loader, criterion, device, classes):
             for i in range(len(images)):
                 if incorrect_mask[i]:
                     incorrect_predictions.append({
-                        'image_path': image_paths[i] if isinstance(image_paths, list) else str(image_paths[i]),
+                        'image_path': image_paths[i] if isinstance(image_paths[i], list) else str(image_paths[i]),
                         'true_label': classes[labels[i].item()],
                         'predicted_label': classes[predicted[i].item()],
                         'confidence': torch.softmax(outputs[i], dim=0).max().item(),
@@ -311,10 +311,12 @@ def evaluate_trained_model():
     """
 
     # Configurações
-    DATA_DIR = "data/pad_ufes_20"
-    METADATA_FILE = "data/pad_ufes_20/metadata.csv"
-    CHECKPOINT_PATH = "results_pad_ufes_20_wandb/best_model.pth"
-    SAVE_FOLDER = "evaluation_results_pad"
+    DATA_DIR_2019 = "data/isic2019"
+    DATA_DIR_2020 = "data/isic2020"
+    METADATA_2019 = "data/isic2019/ISIC_2019_Training_GroundTruth.csv"
+    METADATA_2020 = "data/isic2020/ISIC_2020_Training_GroundTruth_v2.csv"
+    CHECKPOINT_PATH = "results_isic_2019_2020_wandb/best_model.pth"
+    SAVE_FOLDER = "evaluation_results_isic"
     IMG_SIZE = 224
     BATCH_SIZE = 256
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -332,11 +334,11 @@ def evaluate_trained_model():
 
     # Inicializar wandb para logging
     wandb.init(
-        project="pad-ufes-20-lesion-classification",
+        project="isic-2019-2020-lesion-classification",
         name="efficientnet-evaluation",
         config={
             "architecture": "EfficientNet-B3-Native",
-            "dataset": "PAD-UFES-20",
+            "dataset": "ISIC_2019_2020",
             "batch_size": BATCH_SIZE,
             "img_size": IMG_SIZE,
             "device": str(DEVICE),
@@ -345,11 +347,22 @@ def evaluate_trained_model():
     )
 
     try:
-        # Carregar dataset usando módulo organizado
-        print("Carregando dataset PAD-UFES-20...")
         # Usar as mesmas classes do treinamento para compatibilidade
-        dataset, split_data, num_classes, classes = load_pad_ufes_dataset(
-            DATA_DIR, METADATA_FILE, IMG_SIZE, desired_classes=["SEK", "BCC", "NEV", "MEL"]
+        desired_classes = [
+            "melanoma",
+            "nevus",
+            "basal_cell_carcinoma",
+            "seborrheic_keratosis"
+        ]
+        
+        print(f"Classes selecionadas: {desired_classes}")
+        
+        # Carregar dataset usando módulo organizado
+        print("Carregando dataset ISIC 2019 + 2020...")
+        dataset, split_data, num_classes, classes, dataset_info = load_isic_dataset(
+            DATA_DIR_2019, DATA_DIR_2020, 
+            METADATA_2019, METADATA_2020, 
+            IMG_SIZE, desired_classes=desired_classes
         )
         
         # Criar dataloaders usando módulo organizado
@@ -357,9 +370,6 @@ def evaluate_trained_model():
         train_loader, val_loader, test_loader = create_dataloaders(
             dataset, split_data, BATCH_SIZE
         )
-        
-        # Obter informações do dataset
-        dataset_info = get_dataset_info(dataset, split_data)
         
         print(f"Número de classes: {num_classes}")
         print(f"Classes: {classes}")

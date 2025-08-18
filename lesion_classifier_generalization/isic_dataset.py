@@ -316,4 +316,4 @@ class ISICDatasetLightweight(ISICDataset):
         label_str = self.labels[idx]
         label_idx = self.label_encoder.transform([label_str])[0]
         
-        return image, label_idx, idx
+        return image, label_idx, img_path
