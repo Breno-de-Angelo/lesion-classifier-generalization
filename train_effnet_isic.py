@@ -129,41 +129,41 @@ def train_with_wandb():
 
         print("Training concluído!")
         print(f"Melhor val_acc: {training_results['best_val_acc']:.2f}%")
+        print(f"Melhor checkpoint: {training_results['checkpoint_path']}")
 
-        # Evaluation no conjunto de teste
-        print("Avaliando no conjunto de teste...")
+        # # Evaluation no conjunto de teste
+        # print("Avaliando no conjunto de teste...")
 
-        # Carregar melhor modelo
-        checkpoint = load_checkpoint(
-            training_results['checkpoint_path'], model, DEVICE
-        )
+        # # Carregar melhor modelo
+        # checkpoint = load_checkpoint(
+        #     training_results['checkpoint_path'], model, DEVICE
+        # )
 
-        if checkpoint is None:
-            print("Usando modelo atual para evaluation...")
+        # if checkpoint is None:
+        #     print("Usando modelo atual para evaluation...")
 
-        # Loss function para evaluation
-        criterion = nn.CrossEntropyLoss()
+        # # Loss function para evaluation
+        # criterion = nn.CrossEntropyLoss()
 
-        # Evaluation usando módulo organizado
-        test_metrics = evaluate_model(model, test_loader, criterion, DEVICE)
+        # # Evaluation usando módulo organizado
+        # test_metrics = evaluate_model(model, test_loader, criterion, DEVICE)
 
-        # Log dos resultados para wandb
-        log_evaluation_to_wandb(test_metrics, dataset_info)
+        # # Log dos resultados para wandb
+        # log_evaluation_to_wandb(test_metrics, dataset_info)
 
-        # Imprimir resumo da avaliação
-        print_evaluation_summary(test_metrics)
+        # # Imprimir resumo da avaliação
+        # print_evaluation_summary(test_metrics)
 
-        # Salvar resultados finais
-        save_evaluation_results(
-            test_metrics, dataset_info, SAVE_FOLDER, checkpoint
-        )
+        # # Salvar resultados finais
+        # save_evaluation_results(
+        #     test_metrics, dataset_info, SAVE_FOLDER, checkpoint
+        # )
 
         print(f"\nResultados finais salvos em: {SAVE_FOLDER}")
         print("📁 Arquivos salvos:")
         print(f"  - Modelo treinado: {training_results['checkpoint_path']}")
         print(f"  - Separação dos dados: {os.path.join(SAVE_FOLDER, 'data_split.json')}")
-        print(f"  - Resultados da avaliação: {os.path.join(SAVE_FOLDER, 'evaluation_results.json')}")
-
+        # print(f"  - Resultados da avaliação: {os.path.join(SAVE_FOLDER, 'evaluation_results.json')}")
         print("\n🎉 Training concluído com sucesso!")
         print("Acesse o dashboard do wandb para visualizar todos os resultados!")
 
