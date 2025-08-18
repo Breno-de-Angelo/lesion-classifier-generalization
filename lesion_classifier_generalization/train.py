@@ -274,6 +274,7 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
     
     best_val_balanced_acc = 0.0
     best_val_acc = 0.0
+    best_val_loss = float('inf')
     training_history = {
         'train_loss': [], 'train_acc': [], 'train_balanced_acc': [],
         'val_loss': [], 'val_acc': [], 'val_balanced_acc': [],
@@ -344,7 +345,6 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
         
         # Salvar melhor modelo baseado na acurácia balanceada
         if val_balanced_acc > best_val_balanced_acc:
-            epochs_no_improve = 0
             best_val_balanced_acc = val_balanced_acc
             best_val_acc = val_acc  # Atualizar também a melhor acurácia global
             checkpoint_path = os.path.join(save_folder, 'best_model.pth')
@@ -370,11 +370,20 @@ def train_model(model, train_loader, val_loader, num_epochs, device, save_folder
             print(f"   🏆 Melhor val_balanced_acc até agora: {best_val_balanced_acc*100:.2f}%")
             print(f"   🎯 Melhor val_global_acc até agora: {best_val_acc:.2f}%")
         
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_no_improve = 0
+            # print epochs without improvement
+            print(f"   🏆 Melhor val_loss até agora: {best_val_loss:.4f}")
+            print(f"   🏆 Epochs sem melhora: {epochs_no_improve}")
+        else:
+            epochs_no_improve += 1
+            print(f"   🏆 Epochs sem melhora: {epochs_no_improve}")
+
         print(f"{'='*60}")
 
         if epochs_no_improve >= early_stopping_patience:
             print(f"\n🛑 Early stopping ativado após {early_stopping_patience} épocas sem melhora.")
-            print(f"   O melhor modelo foi salvo na época {epoch - epochs_no_improve + 1} com acurácia de {best_val_balanced_acc*100:.2f}%.")
             break
     
     # Estatísticas finais
