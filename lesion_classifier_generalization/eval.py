@@ -121,7 +121,12 @@ def save_evaluation_results(test_metrics, dataset_info, save_folder, checkpoint_
     # Converter tipos numpy para tipos Python nativos para serialização JSON
     def convert_numpy_types(obj):
         if hasattr(obj, 'item'):
-            return obj.item()
+            # Verificar se é um array de tamanho 1
+            if obj.size == 1:
+                return obj.item()
+            else:
+                # Se não for de tamanho 1, converter para lista
+                return obj.tolist()
         elif isinstance(obj, dict):
             return {k: convert_numpy_types(v) for k, v in obj.items()}
         elif isinstance(obj, list):

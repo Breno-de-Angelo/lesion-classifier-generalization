@@ -116,6 +116,61 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
     plt.close()
 
 
+def create_roc_curves(y_true, y_pred_proba, classes, save_path):
+    """
+    Cria e salva curvas ROC para cada classe
+    
+    Args:
+        y_true: Labels verdadeiros
+        y_pred_proba: Probabilidades preditas (n_samples, n_classes)
+        classes: Lista de classes
+        save_path: Caminho para salvar a imagem
+    """
+    from sklearn.metrics import roc_curve, auc
+    
+    plt.figure(figsize=(12, 8))
+    
+    # Calcular e plotar curva ROC para cada classe
+    roc_aucs = []
+    for i, class_name in enumerate(classes):
+        # Criar labels binários para classe i vs resto
+        y_true_binary = (np.array(y_true) == i).astype(int)
+        y_score = y_pred_proba[:, i]
+        
+        # Calcular curva ROC
+        fpr, tpr, _ = roc_curve(y_true_binary, y_score)
+        roc_auc = auc(fpr, tpr)
+        roc_aucs.append(roc_auc)
+        
+        # Plotar curva ROC
+        plt.plot(fpr, tpr, lw=2, 
+                label=f'{class_name} (AUC = {roc_auc:.3f})')
+    
+    # Plotar linha diagonal (classificador aleatório)
+    plt.plot([0, 1], [0, 1], 'k--', lw=2, label='Classificador Aleatório (AUC = 0.500)')
+    
+    # Configurações do gráfico
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Taxa de Falsos Positivos (1 - Especificidade)')
+    plt.ylabel('Taxa de Verdadeiros Positivos (Sensibilidade)')
+    plt.title('Curvas ROC por Classe - ISIC 2019+2020')
+    plt.legend(loc="lower right", fontsize=10)
+    plt.grid(True, alpha=0.3)
+    
+    # Adicionar texto com AUC médio
+    mean_auc = np.mean(roc_aucs)
+    plt.text(0.02, 0.98, f'AUC Médio: {mean_auc:.3f}', 
+             transform=plt.gca().transAxes, fontsize=12, 
+             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return roc_aucs
+
+
 def evaluate_model_complete(model, test_loader, criterion, device, classes):
     """
     Avalia o modelo no conjunto de teste em uma única passada
@@ -268,6 +323,7 @@ def evaluate_model_complete(model, test_loader, criterion, device, classes):
         'error_summary': error_summary,
         'all_labels': all_labels,
         'all_predictions': all_predictions,
+        'all_outputs': all_outputs,
         'all_image_paths': all_image_paths
     }
 
@@ -418,13 +474,23 @@ def evaluate_trained_model():
         metrics_path = os.path.join(SAVE_FOLDER, 'classification_metrics.png')
         create_classification_report_plot(y_true, y_pred, classes, metrics_path)
         
+        # Gerar curvas ROC
+        print("\nGerando curvas ROC...")
+        y_true_np = np.array(test_metrics['all_labels'])
+        # Converter outputs para probabilidades usando softmax
+        outputs_array = np.array(test_metrics['all_outputs'])
+        y_pred_proba_np = torch.softmax(torch.tensor(outputs_array), dim=1).numpy()
+        roc_path = os.path.join(SAVE_FOLDER, 'roc_curves.png')
+        roc_aucs = create_roc_curves(y_true_np, y_pred_proba_np, classes, roc_path)
+        
         # Log dos resultados para wandb
         log_evaluation_to_wandb(test_metrics, dataset_info)
         
         # Log da matriz de confusão para wandb
         wandb.log({
             "confusion_matrix": wandb.Image(cm_path),
-            "classification_metrics": wandb.Image(metrics_path)
+            "classification_metrics": wandb.Image(metrics_path),
+            "roc_curves": wandb.Image(roc_path)
         })
 
         # Imprimir resumo da avaliação
@@ -453,6 +519,7 @@ def evaluate_trained_model():
         print(f"  - Métricas por classe: {metrics_path}")
         print(f"  - Predições incorretas: {os.path.join(SAVE_FOLDER, 'incorrect_predictions.csv')}")
         print(f"  - Análise de erros: {os.path.join(SAVE_FOLDER, 'error_analysis.json')}")
+        print(f"  - Curvas ROC: {roc_path}")
         
         print("\n🎉 Avaliação concluída com sucesso!")
         print("Acesse o dashboard do wandb para visualizar todos os resultados!")
