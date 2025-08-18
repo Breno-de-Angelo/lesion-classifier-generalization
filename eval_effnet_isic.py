@@ -156,42 +156,74 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
         y_true, y_pred, labels=range(len(classes)), average=None
     )
     
-    # Criar gráfico de barras
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+    # Criar gráfico de barras com melhor espaçamento
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 7))
+    
+    # Configurações comuns para todos os subplots
+    bar_width = 0.6
+    x_pos = np.arange(len(classes))
     
     # Precision
-    bars1 = ax1.bar(classes, precision, color='skyblue', alpha=0.7)
-    ax1.set_title('Precision por Classe')
-    ax1.set_ylabel('Precision')
-    ax1.set_ylim(0, 1)
-    ax1.tick_params(axis='x', rotation=45)
+    bars1 = ax1.bar(x_pos, precision, width=bar_width, color='skyblue', alpha=0.8, edgecolor='navy', linewidth=1)
+    ax1.set_title('Precision por Classe', fontsize=14, fontweight='bold', pad=20)
+    ax1.set_ylabel('Precision', fontsize=12, fontweight='bold')
+    ax1.set_ylim(0, 1.05)
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels(classes, rotation=45, ha='right')
+    ax1.grid(axis='y', alpha=0.3, linestyle='--')
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
     
     # Recall
-    bars2 = ax2.bar(classes, recall, color='lightgreen', alpha=0.7)
-    ax2.set_title('Recall por Classe')
-    ax2.set_ylabel('Recall')
-    ax2.set_ylim(0, 1)
-    ax2.tick_params(axis='x', rotation=45)
+    bars2 = ax2.bar(x_pos, recall, width=bar_width, color='lightgreen', alpha=0.8, edgecolor='darkgreen', linewidth=1)
+    ax2.set_title('Recall por Classe', fontsize=14, fontweight='bold', pad=20)
+    ax2.set_ylabel('Recall', fontsize=12, fontweight='bold')
+    ax2.set_ylim(0, 1.05)
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(classes, rotation=45, ha='right')
+    ax2.grid(axis='y', alpha=0.3, linestyle='--')
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
     
     # F1-Score
-    bars3 = ax3.bar(classes, f1, color='salmon', alpha=0.7)
-    ax3.set_title('F1-Score por Classe')
-    ax3.set_ylabel('F1-Score')
-    ax3.set_ylim(0, 1)
-    ax3.tick_params(axis='x', rotation=45)
+    bars3 = ax3.bar(x_pos, f1, width=bar_width, color='salmon', alpha=0.8, edgecolor='darkred', linewidth=1)
+    ax3.set_title('F1-Score por Classe', fontsize=14, fontweight='bold', pad=20)
+    ax3.set_ylabel('F1-Score', fontsize=12, fontweight='bold')
+    ax3.set_ylim(0, 1.05)
+    ax3.set_xticks(x_pos)
+    ax3.set_xticklabels(classes, rotation=45, ha='right')
+    ax3.grid(axis='y', alpha=0.3, linestyle='--')
+    ax3.spines['top'].set_visible(False)
+    ax3.spines['right'].set_visible(False)
     
-    # Adicionar valores nas barras
-    for bars in [bars1, bars2, bars3]:
-        for bar in bars:
+    # Adicionar valores nas barras com melhor posicionamento
+    def add_value_labels(ax, bars, values):
+        for bar, value in zip(bars, values):
             height = bar.get_height()
-            ax1.annotate(f'{height:.2f}',
+            # Posicionar o texto acima da barra com offset adequado
+            ax.annotate(f'{value:.3f}',
                         xy=(bar.get_x() + bar.get_width() / 2, height),
-                        xytext=(0, 3),
+                        xytext=(0, 8),
                         textcoords="offset points",
-                        ha='center', va='bottom')
+                        ha='center', va='bottom',
+                        fontsize=10, fontweight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8, edgecolor='gray'))
     
+    # Adicionar labels para cada subplot
+    add_value_labels(ax1, bars1, precision)
+    add_value_labels(ax2, bars2, recall)
+    add_value_labels(ax3, bars3, f1)
+    
+    # Adicionar título geral
+    fig.suptitle('Métricas de Classificação por Classe - ISIC 2019+2020', 
+                 fontsize=16, fontweight='bold', y=0.98)
+    
+    # Ajustar layout para evitar sobreposição
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.subplots_adjust(top=0.9, wspace=0.3)
+    
+    # Salvar com alta qualidade
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
 
 
