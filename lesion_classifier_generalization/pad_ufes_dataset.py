@@ -166,3 +166,33 @@ class PADUFES20Dataset(Dataset):
         test_dataset.is_training = False
         
         return train_dataset, val_dataset, test_dataset
+
+    def get_datasets_from_split(self, split_data):
+        """
+        Cria datasets PyTorch a partir de uma separação de dados carregada
+        
+        Args:
+            split_data: Dicionário com dados separados carregados do JSON
+        
+        Returns:
+            tuple: (train_dataset, val_dataset, test_dataset)
+        """
+        # Dataset de treinamento
+        train_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
+        train_dataset.image_paths = split_data['train']['paths']
+        train_dataset.labels = split_data['train']['labels']
+        train_dataset.is_training = True
+        
+        # Dataset de validação
+        val_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
+        val_dataset.image_paths = split_data['val']['paths']
+        val_dataset.labels = split_data['val']['labels']
+        val_dataset.is_training = False
+        
+        # Dataset de teste
+        test_dataset = PADUFES20Dataset(self.data_dir, self.metadata_file, self.img_size)
+        test_dataset.image_paths = split_data['test']['paths']
+        test_dataset.labels = split_data['test']['labels']
+        test_dataset.is_training = False
+        
+        return train_dataset, val_dataset, test_dataset

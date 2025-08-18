@@ -14,6 +14,7 @@ import wandb
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import json
 from sklearn.metrics import (
     confusion_matrix, classification_report, balanced_accuracy_score, 
     roc_auc_score, precision_recall_fscore_support, cohen_kappa_score
@@ -29,6 +30,84 @@ from lesion_classifier_generalization import (
     log_evaluation_to_wandb,
     print_evaluation_summary
 )
+
+
+def load_data_split(save_folder):
+    """
+    Carrega a separação dos dados salva durante o treinamento
+    
+    Args:
+        save_folder: Pasta onde está salva a separação dos dados
+    
+    Returns:
+        dict: Dicionário com dados separados ou None se não encontrado
+    """
+    split_file = os.path.join(save_folder, 'data_split.json')
+    
+    if not os.path.exists(split_file):
+        print(f"Aviso: Arquivo de separação dos dados não encontrado: {split_file}")
+        print("Será feita uma nova divisão dos dados (não garantirá consistência com o treinamento)")
+        return None
+    
+    try:
+        with open(split_file, 'r') as f:
+            split_data = json.load(f)
+        
+        print(f"Separação dos dados carregada de: {split_file}")
+        return split_data
+    except Exception as e:
+        print(f"Erro ao carregar separação dos dados: {e}")
+        return None
+
+
+def create_dataloaders_from_split(dataset, split_data, batch_size, num_workers=4):
+    """
+    Cria dataloaders usando a separação de dados carregada
+    
+    Args:
+        dataset: Dataset PAD-UFES-20
+        split_data: Dados separados carregados
+        batch_size: Tamanho do batch
+        num_workers: Número de workers para carregamento
+    
+    Returns:
+        tuple: (train_loader, val_loader, test_loader)
+    """
+    from torch.utils.data import DataLoader
+    
+    # Criar datasets usando a separação carregada
+    train_dataset, val_dataset, test_dataset = dataset.get_datasets_from_split(split_data)
+    
+    print(f"Train: {len(train_dataset)} imagens")
+    print(f"Val: {len(val_dataset)} imagens")
+    print(f"Test: {len(test_dataset)} imagens")
+    
+    # Criar dataloaders
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=False,  # Não embaralhar para avaliação
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    
+    return train_loader, val_loader, test_loader
 
 
 def create_confusion_matrix(y_true, y_pred, classes, save_path):
@@ -383,6 +462,14 @@ def evaluate_trained_model():
         print("Execute primeiro o script de treinamento ou especifique um checkpoint válido.")
         return
 
+    # Verificar se a separação dos dados existe
+    checkpoint_dir = os.path.dirname(CHECKPOINT_PATH)
+    data_split = load_data_split(checkpoint_dir)
+    
+    if data_split is None:
+        print("⚠️  Aviso: Não foi possível carregar a separação dos dados do treinamento.")
+        print("Será feita uma nova divisão dos dados, mas isso pode não ser consistente com o treinamento.")
+
     # Criar diretório de resultados
     os.makedirs(SAVE_FOLDER, exist_ok=True)
 
@@ -396,7 +483,8 @@ def evaluate_trained_model():
             "batch_size": BATCH_SIZE,
             "img_size": IMG_SIZE,
             "device": str(DEVICE),
-            "mode": "evaluation_only"
+            "mode": "evaluation_only",
+            "using_saved_split": data_split is not None
         }
     )
 
@@ -404,18 +492,51 @@ def evaluate_trained_model():
         # Carregar dataset usando módulo organizado
         print("Carregando dataset PAD-UFES-20...")
         # Usar as mesmas classes do treinamento para compatibilidade
-        dataset, split_data, num_classes, classes = load_pad_ufes_dataset(
+        dataset, _, num_classes, classes = load_pad_ufes_dataset(
             DATA_DIR, METADATA_FILE, IMG_SIZE, desired_classes=["SEK", "BCC", "NEV", "MEL"]
         )
         
-        # Criar dataloaders usando módulo organizado
+        # Criar dataloaders usando a separação salva ou nova divisão
         print("Criando dataloaders...")
-        train_loader, val_loader, test_loader = create_dataloaders(
-            dataset, split_data, BATCH_SIZE
-        )
+        if data_split is not None:
+            # Usar separação salva durante o treinamento
+            print("✅ Usando separação dos dados salva durante o treinamento")
+            train_loader, val_loader, test_loader = create_dataloaders_from_split(
+                dataset, data_split, BATCH_SIZE
+            )
+        else:
+            # Fazer nova divisão (não garantirá consistência)
+            print("⚠️  Fazendo nova divisão dos dados (não garantirá consistência com treinamento)")
+            _, split_data, _, _ = load_pad_ufes_dataset(
+                DATA_DIR, METADATA_FILE, IMG_SIZE, desired_classes=["SEK", "BCC", "NEV", "MEL"]
+            )
+            train_loader, val_loader, test_loader = create_dataloaders(
+                dataset, split_data, BATCH_SIZE
+            )
         
         # Obter informações do dataset
-        dataset_info = get_dataset_info(dataset, split_data)
+        if data_split is not None:
+            # Usar a separação carregada para obter informações corretas
+            dataset_info = {
+                'classes': classes,
+                'num_classes': num_classes,
+                'dataset_sizes': {
+                    'train': len(data_split['train']['paths']),
+                    'val': len(data_split['val']['paths']),
+                    'test': len(data_split['test']['paths'])
+                }
+            }
+        else:
+            # Usar informações básicas do dataset
+            dataset_info = {
+                'classes': classes,
+                'num_classes': num_classes,
+                'dataset_sizes': {
+                    'train': len(dataset.image_paths),
+                    'val': 0,
+                    'test': 0
+                }
+            }
         
         print(f"Número de classes: {num_classes}")
         print(f"Classes: {classes}")
@@ -510,6 +631,11 @@ def evaluate_trained_model():
         print(f"  - Predições incorretas: {os.path.join(SAVE_FOLDER, 'incorrect_predictions.csv')}")
         print(f"  - Análise de erros: {os.path.join(SAVE_FOLDER, 'error_analysis.json')}")
         print(f"  - Curvas ROC: {roc_curves_path}")
+        
+        if data_split is not None:
+            print("\n✅ Avaliação realizada usando os mesmos dados de teste do treinamento!")
+        else:
+            print("\n⚠️  Avaliação realizada com nova divisão dos dados (não garantida consistência com treinamento)")
         
         print("\n🎉 Avaliação concluída com sucesso!")
         print("Acesse o dashboard do wandb para visualizar todos os resultados!")

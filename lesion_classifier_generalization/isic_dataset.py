@@ -269,6 +269,33 @@ class ISICDataset(Dataset):
         
         return train_dataset, val_dataset, test_dataset
 
+    def get_datasets_from_split(self, split_data):
+        """
+        Cria datasets PyTorch a partir de uma separação de dados carregada
+        
+        Args:
+            split_data: Dicionário com dados separados carregados do JSON
+        
+        Returns:
+            tuple: (train_dataset, val_dataset, test_dataset)
+        """
+        # Dataset de treinamento (versão leve)
+        train_dataset = ISICDatasetLightweight(
+            self, split_data['train']['paths'], split_data['train']['labels'], is_training=True
+        )
+        
+        # Dataset de validação (versão leve)
+        val_dataset = ISICDatasetLightweight(
+            self, split_data['val']['paths'], split_data['val']['labels'], is_training=False
+        )
+        
+        # Dataset de teste (versão leve)
+        test_dataset = ISICDatasetLightweight(
+            self, split_data['test']['paths'], split_data['test']['labels'], is_training=False
+        )
+        
+        return train_dataset, val_dataset, test_dataset
+
 
 class ISICDatasetLightweight(ISICDataset):
     """

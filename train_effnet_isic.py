@@ -10,6 +10,7 @@ import os
 import torch
 import torch.nn as nn
 import wandb
+import json
 from lesion_classifier_generalization import (
     create_efficientnet_model,
     load_isic_dataset,
@@ -22,6 +23,31 @@ from lesion_classifier_generalization import (
     log_evaluation_to_wandb,
     print_evaluation_summary
 )
+
+
+def save_data_split(split_data, save_folder):
+    """
+    Salva a separação dos dados (train/val/test) para uso posterior na avaliação
+    
+    Args:
+        split_data: Dicionário com dados separados
+        save_folder: Pasta para salvar
+    """
+    # Converter os dados para formato serializável
+    serializable_split = {}
+    for split_name, (paths, labels) in split_data.items():
+        serializable_split[split_name] = {
+            'paths': paths,
+            'labels': labels
+        }
+    
+    # Salvar em JSON
+    split_file = os.path.join(save_folder, 'data_split.json')
+    with open(split_file, 'w') as f:
+        json.dump(serializable_split, f, indent=2)
+    
+    print(f"Separação dos dados salva em: {split_file}")
+    return split_file
 
 
 def train_with_wandb():
@@ -77,6 +103,10 @@ def train_with_wandb():
             IMG_SIZE, desired_classes=desired_classes
         )
         
+        # Salvar a separação dos dados para uso posterior na avaliação
+        print("Salvando separação dos dados...")
+        save_data_split(split_data, SAVE_FOLDER)
+        
         # Criar dataloaders usando módulo organizado
         train_loader, val_loader, test_loader = create_dataloaders(
             dataset, split_data, BATCH_SIZE
@@ -129,6 +159,10 @@ def train_with_wandb():
         )
 
         print(f"\nResultados finais salvos em: {SAVE_FOLDER}")
+        print("📁 Arquivos salvos:")
+        print(f"  - Modelo treinado: {training_results['checkpoint_path']}")
+        print(f"  - Separação dos dados: {os.path.join(SAVE_FOLDER, 'data_split.json')}")
+        print(f"  - Resultados da avaliação: {os.path.join(SAVE_FOLDER, 'evaluation_results.json')}")
 
         print("\n🎉 Training concluído com sucesso!")
         print("Acesse o dashboard do wandb para visualizar todos os resultados!")
