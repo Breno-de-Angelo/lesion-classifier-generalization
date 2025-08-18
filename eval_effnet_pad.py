@@ -214,13 +214,8 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
     add_value_labels(ax2, bars2, recall)
     add_value_labels(ax3, bars3, f1)
     
-    # Adicionar título geral
-    fig.suptitle('Métricas de Classificação por Classe - PAD-UFES-20', 
-                 fontsize=16, fontweight='bold', y=0.98)
-    
     # Ajustar layout para evitar sobreposição
     plt.tight_layout()
-    plt.subplots_adjust(top=0.9, wspace=0.3)
     
     # Salvar com alta qualidade
     plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
