@@ -120,6 +120,21 @@ def create_confusion_matrix(y_true, y_pred, classes, save_path):
         classes: Lista de classes
         save_path: Caminho para salvar a imagem
     """
+    # Mapear nomes completos para siglas
+    class_mapping = {
+        'basal_cell_carcinoma': 'BCC',
+        'melanoma': 'MEL',
+        'nevus': 'NEV',
+        'seborrheic_keratosis': 'SEK',
+        'BCC': 'BCC',
+        'MEL': 'MEL',
+        'NEV': 'NEV',
+        'SEK': 'SEK'
+    }
+    
+    # Converter nomes das classes para siglas
+    classes_abbreviated = [class_mapping.get(cls, cls) for cls in classes]
+    
     plt.figure(figsize=(10, 8))
     cm = confusion_matrix(y_true, y_pred, labels=range(len(classes)))
     
@@ -128,8 +143,7 @@ def create_confusion_matrix(y_true, y_pred, classes, save_path):
     
     # Criar heatmap
     sns.heatmap(cm_normalized, annot=True, fmt='.2f', cmap='Blues',
-                xticklabels=classes, yticklabels=classes)
-    plt.title('Matriz de Confusão Normalizada')
+                xticklabels=classes_abbreviated, yticklabels=classes_abbreviated)
     plt.xlabel('Predição')
     plt.ylabel('Valor Real')
     plt.xticks(rotation=45)
@@ -151,6 +165,21 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
         classes: Lista de classes
         save_path: Caminho para salvar a imagem
     """
+    # Mapear nomes completos para siglas
+    class_mapping = {
+        'basal_cell_carcinoma': 'BCC',
+        'melanoma': 'MEL',
+        'nevus': 'NEV',
+        'seborrheic_keratosis': 'SEK',
+        'BCC': 'BCC',
+        'MEL': 'MEL',
+        'NEV': 'NEV',
+        'SEK': 'SEK'
+    }
+    
+    # Converter nomes das classes para siglas
+    classes_abbreviated = [class_mapping.get(cls, cls) for cls in classes]
+    
     # Calcular métricas por classe
     precision, recall, f1, support = precision_recall_fscore_support(
         y_true, y_pred, labels=range(len(classes)), average=None
@@ -169,7 +198,7 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
     ax1.set_ylabel('Precision', fontsize=12, fontweight='bold')
     ax1.set_ylim(0, 1.05)
     ax1.set_xticks(x_pos)
-    ax1.set_xticklabels(classes, rotation=45, ha='right')
+    ax1.set_xticklabels(classes_abbreviated, rotation=45, ha='right')
     ax1.grid(axis='y', alpha=0.3, linestyle='--')
     ax1.spines['top'].set_visible(False)
     ax1.spines['right'].set_visible(False)
@@ -180,7 +209,7 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
     ax2.set_ylabel('Recall', fontsize=12, fontweight='bold')
     ax2.set_ylim(0, 1.05)
     ax2.set_xticks(x_pos)
-    ax2.set_xticklabels(classes, rotation=45, ha='right')
+    ax2.set_xticklabels(classes_abbreviated, rotation=45, ha='right')
     ax2.grid(axis='y', alpha=0.3, linestyle='--')
     ax2.spines['top'].set_visible(False)
     ax2.spines['right'].set_visible(False)
@@ -191,7 +220,7 @@ def create_classification_report_plot(y_true, y_pred, classes, save_path):
     ax3.set_ylabel('F1-Score', fontsize=12, fontweight='bold')
     ax3.set_ylim(0, 1.05)
     ax3.set_xticks(x_pos)
-    ax3.set_xticklabels(classes, rotation=45, ha='right')
+    ax3.set_xticklabels(classes_abbreviated, rotation=45, ha='right')
     ax3.grid(axis='y', alpha=0.3, linestyle='--')
     ax3.spines['top'].set_visible(False)
     ax3.spines['right'].set_visible(False)
@@ -234,6 +263,21 @@ def create_roc_curves(y_true, y_pred_proba, classes, save_path):
     """
     from sklearn.metrics import roc_curve, auc
     
+    # Mapear nomes completos para siglas
+    class_mapping = {
+        'basal_cell_carcinoma': 'BCC',
+        'melanoma': 'MEL',
+        'nevus': 'NEV',
+        'seborrheic_keratosis': 'SEK',
+        'BCC': 'BCC',
+        'MEL': 'MEL',
+        'NEV': 'NEV',
+        'SEK': 'SEK'
+    }
+    
+    # Converter nomes das classes para siglas
+    classes_abbreviated = [class_mapping.get(cls, cls) for cls in classes]
+    
     plt.figure(figsize=(12, 8))
     
     # Calcular e plotar curva ROC para cada classe
@@ -248,9 +292,10 @@ def create_roc_curves(y_true, y_pred_proba, classes, save_path):
         roc_auc = auc(fpr, tpr)
         roc_aucs.append(roc_auc)
         
-        # Plotar curva ROC
+        # Plotar curva ROC usando a sigla da classe
+        class_abbr = classes_abbreviated[i]
         plt.plot(fpr, tpr, lw=2, 
-                label=f'{class_name} (AUC = {roc_auc:.3f})')
+                label=f'{class_abbr} (AUC = {roc_auc:.3f})')
     
     # Plotar linha diagonal (classificador aleatório)
     plt.plot([0, 1], [0, 1], 'k--', lw=2, label='Classificador Aleatório (AUC = 0.500)')
@@ -260,7 +305,6 @@ def create_roc_curves(y_true, y_pred_proba, classes, save_path):
     plt.ylim([0.0, 1.05])
     plt.xlabel('Taxa de Falsos Positivos (1 - Especificidade)')
     plt.ylabel('Taxa de Verdadeiros Positivos (Sensibilidade)')
-    plt.title('Curvas ROC por Classe - PAD-UFES-20')
     plt.legend(loc="lower right", fontsize=10)
     plt.grid(True, alpha=0.3)
     
